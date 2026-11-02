@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SecTools</title>
+<meta name="description" content="인하우스 보안 담당자의 취약점 진단 · 자동화 도구 모음">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --ink:#14171c; --muted:#5d6672; --line:#e3e6ea;
+  --accent:#0f9d6b; --accent-soft:#e3f5ee;
+  --planned:#8a6d00; --planned-bg:#fbf3d6;
+  --research:#3657c9; --research-bg:#e6ecfb;
+  --active:#0f9d6b; --active-bg:#e3f5ee;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d1014; --panel:#151a20; --ink:#e6eaef; --muted:#8b95a2; --line:#252c35;
+    --accent:#3ddc97; --accent-soft:#12271f;
+    --planned:#e8c55a; --planned-bg:#2a2412;
+    --research:#8aa5ff; --research-bg:#18203a;
+    --active:#3ddc97; --active-bg:#12271f;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d1014; --panel:#151a20; --ink:#e6eaef; --muted:#8b95a2; --line:#252c35;
+  --accent:#3ddc97; --accent-soft:#12271f;
+  --planned:#e8c55a; --planned-bg:#2a2412;
+  --research:#8aa5ff; --research-bg:#18203a;
+  --active:#3ddc97; --active-bg:#12271f;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Sans KR",system-ui,sans-serif;line-height:1.6}
+.mono{font-family:"JetBrains Mono",ui-monospace,monospace}
+.wrap{max-width:1040px;margin:0 auto;padding:0 16px}
+header{border-bottom:1px solid var(--line);padding:48px 0 32px}
+.prompt{color:var(--accent);font-size:14px}
+h1{margin:6px 0 8px;font-size:clamp(28px,5vw,40px);letter-spacing:-.5px}
+.sub{color:var(--muted);margin:0}
+.links{margin-top:16px;display:flex;gap:16px;flex-wrap:wrap;font-size:14px}
+.links a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--line)}
+.links a:hover{border-color:var(--accent)}
+.toolbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:28px 0 20px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tab{border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:6px 14px;border-radius:999px;cursor:pointer;font:inherit;font-size:14px}
+.tab[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.search{flex:1;min-width:200px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:8px 12px;border-radius:8px;font:inherit;font-size:14px}
+.cat{margin:32px 0}
+.cat-head{display:flex;align-items:baseline;gap:10px;margin-bottom:4px}
+.cat-head h2{margin:0;font-size:20px}
+.cat-desc{color:var(--muted);font-size:14px;margin:0 0 14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:10px}
+.card-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.card h3{margin:0;font-size:16px}
+.badge{font-size:12px;padding:2px 8px;border-radius:6px;white-space:nowrap}
+.s-planned{color:var(--planned);background:var(--planned-bg)}
+.s-research{color:var(--research);background:var(--research-bg)}
+.s-active{color:var(--active);background:var(--active-bg)}
+.card p{margin:0;color:var(--muted);font-size:14px}
+.tags{display:flex;gap:6px;flex-wrap:wrap}
+.tag{font-size:12px;color:var(--muted);border:1px solid var(--line);padding:1px 7px;border-radius:5px}
+.card-links{margin-top:auto;display:flex;gap:12px;font-size:13px}
+.card-links a{color:var(--accent);text-decoration:none}
+.card-links .off{color:var(--muted)}
+.empty{color:var(--muted);font-size:14px;padding:12px 0}
+footer{border-top:1px solid var(--line);margin-top:48px;padding:24px 0;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="prompt mono">$ ls ./tools</div>
+    <h1 id="title">SecTools</h1>
+    <p class="sub" id="subtitle"></p>
+    <div class="links" id="links"></div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="toolbar">
+    <div class="tabs" id="tabs" role="group" aria-label="카테고리"></div>
+    <input class="search" id="q" type="search" placeholder="도구 검색 (이름, 태그, 설명)">
+  </div>
+  <div id="list"></div>
+</main>
+
+<footer>
+  <div class="wrap mono">Authorized testing only — 허가된 자산에 한해 사용.</div>
+</footer>
+
+<script>
+const STATUS = { active:"운영 중", planned:"계획", research:"조사 중" };
+let data, current = "all";
+
+function el(tag, attrs = {}, text){
+  const n = document.createElement(tag);
+  for (const [k,v] of Object.entries(attrs)) n.setAttribute(k, v);
+  if (text != null) n.textContent = text;
+  return n;
+}
+
+function renderHeader(){
+  const s = data.site;
+  document.getElementById("title").textContent = s.title;
+  document.getElementById("subtitle").textContent = s.subtitle;
+  document.title = s.title;
+  const links = document.getElementById("links");
+  if (s.github) links.append(el("a",{href:s.github,target:"_blank",rel:"noopener"},"GitHub"));
+  if (s.blog) links.append(el("a",{href:s.blog,target:"_blank",rel:"noopener"},"Blog"));
+}
+
+function renderTabs(){
+  const tabs = document.getElementById("tabs");
+  const items = [{id:"all",name:"All",icon:""}, ...data.categories];
+  for (const c of items){
+    const b = el("button",{class:"tab","aria-pressed":String(c.id===current)}, (c.icon?c.icon+" ":"")+c.name);
+    b.onclick = () => { current = c.id; tabs.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-pressed","false")); b.setAttribute("aria-pressed","true"); renderList(); };
+    tabs.append(b);
+  }
+}
+
+function card(t){
+  const c = el("article",{class:"card"});
+  const top = el("div",{class:"card-top"});
+  top.append(el("h3",{class:"mono"},t.name), el("span",{class:"badge s-"+t.status}, STATUS[t.status]||t.status));
+  c.append(top, el("p",{},t.summary));
+  const tags = el("div",{class:"tags"});
+  (t.tags||[]).forEach(g => tags.append(el("span",{class:"tag"},g)));
+  c.append(tags);
+  const l = el("div",{class:"card-links"});
+  l.append(t.repo ? el("a",{href:t.repo,target:"_blank",rel:"noopener"},"Repo →") : el("span",{class:"off"},"Repo 준비 중"));
+  if (t.docs) l.append(el("a",{href:t.docs,target:"_blank",rel:"noopener"},"Docs →"));
+  c.append(l);
+  return c;
+}
+
+function renderList(){
+  const q = document.getElementById("q").value.trim().toLowerCase();
+  const list = document.getElementById("list");
+  list.replaceChildren();
+  const cats = current==="all" ? data.categories : data.categories.filter(c=>c.id===current);
+  for (const c of cats){
+    const tools = data.tools.filter(t => t.category===c.id && (!q || [t.name,t.summary,...(t.tags||[])].join(" ").toLowerCase().includes(q)));
+    const sec = el("section",{class:"cat"});
+    const head = el("div",{class:"cat-head"});
+    head.append(el("h2",{},c.icon+" "+c.name), el("span",{class:"mono",style:"color:var(--muted);font-size:13px"},tools.length+" tools"));
+    sec.append(head, el("p",{class:"cat-desc"},c.desc));
+    if (tools.length){ const g = el("div",{class:"grid"}); tools.forEach(t=>g.append(card(t))); sec.append(g); }
+    else sec.append(el("div",{class:"empty"}, q ? "검색 결과 없음" : "등록 예정"));
+    list.append(sec);
+  }
+}
+
+fetch("data/tools.json").then(r=>r.json()).then(d=>{
+  data = d; renderHeader(); renderTabs(); renderList();
+  document.getElementById("q").addEventListener("input", renderList);
+}).catch(()=>{
+  document.getElementById("list").textContent = "tools.json 로드 실패 — 로컬 확인 시 'python3 -m http.server'로 실행 필요";
+});
+</script>
+</body>
+</html>
